@@ -7,7 +7,9 @@ authors = [
     { name = "demiurg39", email = "chiryagov2014@gmail.com" }
 ]
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "python-dotenv>=1.2.1",
+]
 
 [project.scripts]
 stray-id = "stray_id:main"
