@@ -218,7 +218,7 @@ async def feed_next(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def feed_exit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle '☰ Меню' button in feed — exit to main menu."""
     context.user_data.pop("feed_index", None)
-    await menu.show_menu(update, context)
+    await menu.back_to_main(update, context)
 
 
 async def feed_2gis(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
