@@ -10,6 +10,8 @@ from telegram.ext import (
     filters,
 )
 
+from stray_id.handlers import menu
+
 from stray_id.locales import get_text
 from stray_id.models.user import Language
 from stray_id.models.dog import Dog, DogStatus, DogFeature, Location
@@ -31,6 +33,7 @@ WAITING_PHOTO = 0
 WAITING_LOCATION = 1
 WAITING_NEW_PHOTO = 2
 WAITING_FEATURES = 3
+WAITING_DECISION = 4
 
 
 def _get_user_lang(user_id: int) -> Language:
@@ -144,7 +147,7 @@ async def identify_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         get_text("dog_not_found", lang),
         reply_markup=get_not_found_keyboard(lang),
     )
-    return ConversationHandler.END
+    return WAITING_DECISION
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -333,6 +336,13 @@ def _identify_filter():
     return filters.Regex(r"^📸")
 
 
+async def menu_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle menu button during conversation."""
+    context.user_data.clear()
+    await menu.show_menu(update, context)
+    return ConversationHandler.END
+
+
 conversation_handler = ConversationHandler(
     entry_points=[
         MessageHandler(_identify_filter(), identify_start),
@@ -351,11 +361,16 @@ conversation_handler = ConversationHandler(
             CallbackQueryHandler(toggle_feature, pattern=f"^{FEATURE_PREFIX}"),
             CallbackQueryHandler(finish_registration, pattern=f"^{FEATURES_DONE}$"),
         ],
+        WAITING_DECISION: [
+            CallbackQueryHandler(cancel, pattern="^cancel$"),
+            CallbackQueryHandler(start_registration, pattern="^register_from_search$"),
+        ],
     },
     fallbacks=[
         CallbackQueryHandler(cancel, pattern="^cancel$"),
         CallbackQueryHandler(start_registration, pattern="^register_from_search$"),
         CallbackQueryHandler(seen_here, pattern=f"^{SEEN_HERE}"),
         CallbackQueryHandler(add_photo_start, pattern=f"^{ADD_PHOTO}"),
+        MessageHandler(filters.Regex(r"^☰"), menu_fallback),
     ],
 )

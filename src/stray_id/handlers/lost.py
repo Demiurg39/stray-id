@@ -10,6 +10,8 @@ from telegram.ext import (
     filters,
 )
 
+from stray_id.handlers import menu
+
 from stray_id.locales import get_text
 from stray_id.models.user import Language
 from stray_id.models.dog import Dog, DogStatus, Location
@@ -154,10 +156,14 @@ async def _finish_lost_registration(
         get_text("lost_registered", lang).format(id=dog.id),
         reply_markup=get_main_menu(lang),
     )
+
+
+
+async def menu_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle menu button during conversation."""
+    context.user_data.clear()
+    await menu.show_menu(update, context)
     return ConversationHandler.END
-
-
-# ConversationHandler triggered from menu callback
 conversation_handler = ConversationHandler(
     entry_points=[
         CallbackQueryHandler(lost_start, pattern="^menu:lost$"),
@@ -174,5 +180,7 @@ conversation_handler = ConversationHandler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, lost_contact_text),
         ],
     },
-    fallbacks=[],
+    fallbacks=[
+        MessageHandler(filters.Regex(r"^🍔"), menu_fallback),
+    ],
 )
