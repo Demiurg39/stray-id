@@ -38,7 +38,7 @@ class Dog:
     """Dog entity."""
 
     id: int
-    photo_file_id: str
+    photo_file_ids: list[str]
     location: Location
     status: DogStatus = DogStatus.STRAY
     features: list[DogFeature] = field(default_factory=list)
