@@ -2,17 +2,17 @@
 
 from telegram import Update
 from telegram.ext import (
-    MessageHandler,
     CallbackQueryHandler,
-    ConversationHandler,
     ContextTypes,
+    ConversationHandler,
+    MessageHandler,
     filters,
 )
 
+from stray_id.keyboards.main_menu import get_main_menu, get_menu_keyboard
 from stray_id.locales import get_text
 from stray_id.models.user import Language
 from stray_id.storage.memory import storage
-from stray_id.keyboards.main_menu import get_menu_keyboard, get_main_menu
 
 
 def _get_user_lang(user_id: int) -> Language:
@@ -26,7 +26,7 @@ async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = get_text("menu_title", lang)
     if not text:
         text = "Menu"
-    
+
     await update.message.reply_text(
         text,
         reply_markup=get_menu_keyboard(lang),
@@ -66,11 +66,14 @@ def _menu_filter():
     """Filter for menu button text in any language."""
     return filters.Regex(r"^☰")
 
+
 def _about_filter():
     return filters.Regex(r"^ℹ️")
 
+
 def _donate_filter():
     return filters.Regex(r"^💝")
+
 
 def _back_filter():
     return filters.Regex(r"^❌")

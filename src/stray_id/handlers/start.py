@@ -3,19 +3,17 @@
 from telegram import Update
 from telegram.ext import (
     CommandHandler,
-    MessageHandler,
-    ConversationHandler,
     ContextTypes,
+    ConversationHandler,
+    MessageHandler,
     filters,
 )
 
+from stray_id.keyboards.main_menu import get_language_keyboard, get_main_menu
 from stray_id.locales import get_text
 from stray_id.models.user import Language
-from stray_id.storage.memory import storage
-from stray_id.keyboards.main_menu import get_main_menu, get_language_keyboard
-
-
 from stray_id.states import ConversationState
+from stray_id.storage.memory import storage
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

@@ -1,10 +1,10 @@
 """Main menu Reply Keyboard."""
 
 from telegram import (
-    ReplyKeyboardMarkup,
-    KeyboardButton,
-    InlineKeyboardMarkup,
     InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
 )
 
 from stray_id.locales import get_text
@@ -188,7 +188,7 @@ def get_menu_keyboard(lang: Language = Language.RU) -> ReplyKeyboardMarkup:
             KeyboardButton(get_text("menu_donate", lang)),
         ],
         [
-            KeyboardButton(get_text("btn_no_cancel", lang)), # Back/Cancel
+            KeyboardButton(get_text("btn_no_cancel", lang)),  # Back/Cancel
         ],
     ]
     return ReplyKeyboardMarkup(
@@ -196,9 +196,6 @@ def get_menu_keyboard(lang: Language = Language.RU) -> ReplyKeyboardMarkup:
         resize_keyboard=True,
         one_time_keyboard=False,
     )
-
-
-
 
 
 def get_not_found_keyboard(lang: Language = Language.RU) -> ReplyKeyboardMarkup:

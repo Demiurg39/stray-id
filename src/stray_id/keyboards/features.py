@@ -1,11 +1,10 @@
 """Inline keyboards for dog features selection."""
 
-from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from stray_id.locales import get_text
-from stray_id.models.user import Language
 from stray_id.models.dog import DogFeature
-
+from stray_id.models.user import Language
 
 # Callback data prefixes
 FEATURE_PREFIX = "feature:"

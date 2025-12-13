@@ -1,12 +1,11 @@
 """Inline keyboard for dog card actions."""
 
-from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from stray_id.locales import get_text
-from stray_id.models.user import Language
 from stray_id.models.dog import Dog, DogStatus
+from stray_id.models.user import Language
 from stray_id.utils.geo import get_2gis_link
-
 
 # Callback data prefixes
 SEEN_HERE = "seen:"
