@@ -81,6 +81,9 @@ def get_location_keyboard(lang: Language = Language.RU) -> ReplyKeyboardMarkup:
                 request_location=True,
             )
         ],
+        [
+            KeyboardButton(get_text("btn_no_cancel", lang)),
+        ],
     ]
     return ReplyKeyboardMarkup(
         keyboard,
@@ -97,6 +100,9 @@ def get_contact_keyboard(lang: Language = Language.RU) -> ReplyKeyboardMarkup:
                 get_text("btn_send_contact", lang),
                 request_contact=True,
             )
+        ],
+        [
+            KeyboardButton(get_text("btn_no_cancel", lang)),
         ],
     ]
     return ReplyKeyboardMarkup(
