@@ -44,11 +44,16 @@ def get_features_keyboard(
             feature_btn(DogFeature.THIN, "feature_thin"),
             feature_btn(DogFeature.AGGRESSIVE, "feature_aggressive"),
         ],
-        [
-            InlineKeyboardButton(
-                text=get_text("btn_done", lang),
-                callback_data=FEATURES_DONE,
-            ),
-        ],
     ]
     return InlineKeyboardMarkup(keyboard)
+
+
+def get_done_keyboard(lang: Language = Language.RU) -> ReplyKeyboardMarkup:
+    """Get Done button reply keyboard."""
+    from telegram import KeyboardButton, ReplyKeyboardMarkup
+    
+    return ReplyKeyboardMarkup(
+        [[KeyboardButton(get_text("btn_done", lang))]],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )

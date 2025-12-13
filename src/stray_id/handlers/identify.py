@@ -17,6 +17,7 @@ from stray_id.keyboards.features import (
     FEATURE_PREFIX,
     FEATURES_DONE,
     get_features_keyboard,
+    get_done_keyboard,
 )
 from stray_id.keyboards.main_menu import (
     get_cancel_keyboard,
@@ -215,6 +216,10 @@ async def register_location(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         get_text("ask_features", lang),
         reply_markup=get_features_keyboard(set(), lang),
     )
+    await update.message.reply_text(
+        text=get_text("press_done_hint", lang),
+        reply_markup=get_done_keyboard(lang),
+    )
     return ConversationState.WAITING_FEATURES
 
 
@@ -256,12 +261,7 @@ async def finish_registration(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> int:
     """Handle ✅ Готово — save dog to database."""
-    query = update.callback_query
-    if query:
-        await query.answer()
-        # Delete the inline keyboard message to clean up
-        await query.delete_message()
-
+    # This is now a MessageHandler (Reply Keyboard), so update.message is valid.
     lang = _get_user_lang(update.effective_user.id)
 
     features: set[DogFeature] = context.user_data.get("features", set())
@@ -411,7 +411,7 @@ def _cancel_filter():
 async def menu_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle menu button during conversation."""
     context.user_data.clear()
-    await menu.show_menu(update, context)
+    await menu.back_to_main(update, context)
     return ConversationHandler.END
 
 
@@ -432,7 +432,7 @@ conversation_handler = ConversationHandler(
             MessageHandler(filters.PHOTO, add_photo_receive),
         ],
         ConversationState.WAITING_FEATURES: [
-            CallbackQueryHandler(finish_registration, pattern=f"^{FEATURES_DONE}$"),
+            MessageHandler(filters.Regex(r"^✅"), finish_registration),
             CallbackQueryHandler(toggle_feature, pattern=f"^{FEATURE_PREFIX}"),
         ],
         ConversationState.WAITING_DECISION: [
