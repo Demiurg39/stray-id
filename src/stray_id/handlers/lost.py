@@ -1,8 +1,10 @@
-"""Lost pet flow handler — 🆘 Потеряшка."""
+"""Lost pet flow handler — 🆘 Потеряшка (from menu)."""
 
+from datetime import datetime
 from telegram import Update
 from telegram.ext import (
     MessageHandler,
+    CallbackQueryHandler,
     ConversationHandler,
     ContextTypes,
     filters,
@@ -12,7 +14,10 @@ from stray_id.locales import get_text
 from stray_id.models.user import Language
 from stray_id.models.dog import Dog, DogStatus, Location
 from stray_id.storage.memory import storage
-from stray_id.keyboards.main_menu import get_main_menu, get_location_keyboard
+from stray_id.search.mock import search_service
+from stray_id.keyboards.main_menu import get_main_menu, get_location_keyboard, get_contact_keyboard
+from stray_id.keyboards.dog_card import get_lost_alert_keyboard
+from stray_id.utils.geo import get_2gis_link
 
 
 # Conversation states
@@ -27,23 +32,22 @@ def _get_user_lang(user_id: int) -> Language:
 
 
 async def lost_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handle '🆘 Потеряшка' button."""
+    """Handle '🆘 Я потерял собаку' from menu."""
+    query = update.callback_query
+    await query.answer()
+    
     lang = _get_user_lang(update.effective_user.id)
-    await update.message.reply_text(
-        get_text("lost_description", lang),
-        parse_mode="Markdown",
-    )
-    await update.message.reply_text(get_text("send_dog_photo", lang))
+    await query.edit_message_text(get_text("lost_ask_photo", lang))
     return WAITING_PHOTO
 
 
 async def lost_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle photo received."""
     lang = _get_user_lang(update.effective_user.id)
-
+    
     photo = update.message.photo[-1]
     context.user_data["photo_id"] = photo.file_id
-
+    
     await update.message.reply_text(
         get_text("ask_location", lang),
         reply_markup=get_location_keyboard(lang),
@@ -54,37 +58,98 @@ async def lost_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def lost_location(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle location received."""
     lang = _get_user_lang(update.effective_user.id)
-
+    
     location = update.message.location
     context.user_data["location"] = Location(
         latitude=location.latitude,
         longitude=location.longitude,
     )
-
+    
     await update.message.reply_text(
         get_text("ask_owner_contact", lang),
-        reply_markup=get_main_menu(lang),  # Remove location keyboard
+        reply_markup=get_contact_keyboard(lang),
     )
     return WAITING_CONTACT
 
 
-async def lost_contact(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handle contact info received — save lost pet."""
+async def lost_contact_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle contact shared via button."""
     lang = _get_user_lang(update.effective_user.id)
+    
+    contact = update.message.contact
+    phone = contact.phone_number
+    
+    return await _finish_lost_registration(update, context, phone, lang)
 
-    contact = update.message.text
 
+async def lost_contact_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle contact entered as text."""
+    lang = _get_user_lang(update.effective_user.id)
+    phone = update.message.text
+    
+    return await _finish_lost_registration(update, context, phone, lang)
+
+
+async def _finish_lost_registration(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    phone: str,
+    lang: Language,
+) -> int:
+    """Complete lost pet registration."""
+    
+    # First, search in existing database
+    photo_id = context.user_data["photo_id"]
+    
+    # Try to find dog with ML (mock always returns empty)
+    file = await context.bot.get_file(photo_id)
+    photo_bytes = await file.download_as_bytearray()
+    results = await search_service.search_by_photo(bytes(photo_bytes))
+    
+    location: Location = context.user_data["location"]
+    
+    if results:
+        # Found existing dog — update it with LOST status
+        dog = storage.get_dog(results[0].dog_id)
+        if dog:
+            dog.status = DogStatus.LOST
+            dog.owner_contact = phone
+            dog.location = location
+            dog.last_seen_at = datetime.now()
+            storage.update_dog(dog)
+            
+            # Notify user
+            await update.message.reply_text(
+                get_text("lost_found_in_db", lang),
+                parse_mode="Markdown",
+            )
+            
+            # Send 2GIS link
+            gis_url = get_2gis_link(dog.location.latitude, dog.location.longitude)
+            await update.message.reply_text(
+                f"📍 Последняя геолокация: {gis_url}",
+            )
+            
+            await update.message.reply_text(
+                get_text("lost_registered", lang).format(id=dog.id),
+                reply_markup=get_main_menu(lang),
+            )
+            
+            context.user_data.clear()
+            return ConversationHandler.END
+    
+    # Not found — create new dog with LOST status
     dog = Dog(
         id=0,
-        photo_file_id=context.user_data["photo_id"],
-        location=context.user_data["location"],
+        photo_file_id=photo_id,
+        location=location,
         status=DogStatus.LOST,
-        owner_contact=contact,
+        owner_contact=phone,
     )
-
+    
     dog = storage.add_dog(dog)
     context.user_data.clear()
-
+    
     await update.message.reply_text(
         get_text("lost_registered", lang).format(id=dog.id),
         reply_markup=get_main_menu(lang),
@@ -92,14 +157,10 @@ async def lost_contact(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     return ConversationHandler.END
 
 
-def _lost_filter():
-    """Filter for lost button text in any language."""
-    return filters.Regex(r"^🆘")
-
-
+# ConversationHandler triggered from menu callback
 conversation_handler = ConversationHandler(
     entry_points=[
-        MessageHandler(_lost_filter(), lost_start),
+        CallbackQueryHandler(lost_start, pattern="^menu:lost$"),
     ],
     states={
         WAITING_PHOTO: [
@@ -109,7 +170,8 @@ conversation_handler = ConversationHandler(
             MessageHandler(filters.LOCATION, lost_location),
         ],
         WAITING_CONTACT: [
-            MessageHandler(filters.TEXT & ~filters.COMMAND, lost_contact),
+            MessageHandler(filters.CONTACT, lost_contact_button),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, lost_contact_text),
         ],
     },
     fallbacks=[],
