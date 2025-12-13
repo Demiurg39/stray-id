@@ -6,7 +6,7 @@ import os
 from dotenv import load_dotenv
 from telegram.ext import ApplicationBuilder
 
-from stray_id.handlers import start, identify, register, lost, profile
+from stray_id.handlers import start, identify, lost, profile, feed, menu
 
 load_dotenv()
 
@@ -27,20 +27,28 @@ def main() -> None:
     application = ApplicationBuilder().token(TOKEN).build()
 
     # Register handlers in order of priority
+
     # 1. Start conversation (language selection)
     application.add_handler(start.handler)
 
-    # 2. Main flows (ConversationHandlers)
+    # 2. Main flow: Identify with integrated registration
     application.add_handler(identify.conversation_handler)
-    application.add_handler(register.conversation_handler)
+
+    # 3. Lost pet flow (from menu)
     application.add_handler(lost.conversation_handler)
 
-    # 3. Profile (simple message handler)
+    # 4. Feed (🐶 Лента)
+    application.add_handler(feed.handler)
+    application.add_handler(feed.next_handler)
+
+    # 5. Hamburger menu (🍔 Меню)
+    application.add_handler(menu.handler)
+    application.add_handler(menu.about_handler)
+    application.add_handler(menu.donate_handler)
+
+    # 6. Profile (from menu)
     application.add_handler(profile.handler)
     application.add_handler(profile.language_handler)
-
-    # 4. Standalone callback handlers
-    application.add_handler(identify.sighting_handler)
 
     log.info("🐕 Stray ID Bot started")
     application.run_polling()
