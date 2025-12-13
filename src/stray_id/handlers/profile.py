@@ -2,8 +2,10 @@
 
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
+    MessageHandler,
     CallbackQueryHandler,
     ContextTypes,
+    filters,
 )
 
 from stray_id.locales import get_text
@@ -28,9 +30,8 @@ def _get_profile_keyboard(lang: Language) -> InlineKeyboardMarkup:
 
 
 async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle 'Профиль' from menu."""
-    query = update.callback_query
-    await query.answer()
+    """Handle '👤 Профиль' from menu."""
+    # Triggered by MessageHandler, so no query
     
     user_id = update.effective_user.id
     lang = _get_user_lang(user_id)
@@ -46,7 +47,7 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         f"{get_text('profile_uploads', lang).format(count=upload_count)}"
     )
     
-    await query.edit_message_text(
+    await update.message.reply_text(
         text,
         parse_mode="Markdown",
         reply_markup=_get_profile_keyboard(lang),
@@ -75,6 +76,9 @@ async def change_language(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     )
 
 
-# Handlers (now triggered from menu callback)
-handler = CallbackQueryHandler(show_profile, pattern="^menu:profile$")
+def _profile_filter():
+    return filters.Regex(r"^👤")
+
+# Handlers
+handler = MessageHandler(_profile_filter(), show_profile)
 language_handler = CallbackQueryHandler(change_language, pattern="^change_language$")

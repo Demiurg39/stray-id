@@ -27,26 +27,28 @@ def get_dog_card_keyboard(
     Layout for identify result:
     [📍 Видел здесь] [📷 Добавить фото]
     [🌍 2GIS]
-    
+
     Layout for feed:
     [🌍 2GIS] [✏️ Обновить]
     [➡️ Дальше]
     """
     keyboard = []
-    
+
     if not show_next:
         # Identify result - allow updating location and photo
-        keyboard.append([
-            InlineKeyboardButton(
-                text=get_text("btn_seen_here", lang),
-                callback_data=f"{SEEN_HERE}{dog.id}",
-            ),
-            InlineKeyboardButton(
-                text=get_text("btn_add_photo", lang),
-                callback_data=f"{ADD_PHOTO}{dog.id}",
-            ),
-        ])
-    
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text=get_text("btn_seen_here", lang),
+                    callback_data=f"{SEEN_HERE}{dog.id}",
+                ),
+                InlineKeyboardButton(
+                    text=get_text("btn_add_photo", lang),
+                    callback_data=f"{ADD_PHOTO}{dog.id}",
+                ),
+            ]
+        )
+
     # 2GIS link (URL button - opens directly)
     gis_url = get_2gis_link(dog.location.latitude, dog.location.longitude)
     row = [
@@ -55,24 +57,28 @@ def get_dog_card_keyboard(
             url=gis_url,
         ),
     ]
-    
+
     if show_next:
-        row.append(InlineKeyboardButton(
-            text=get_text("btn_update_info", lang),
-            callback_data=f"{UPDATE_INFO}{dog.id}",
-        ))
-    
+        row.append(
+            InlineKeyboardButton(
+                text=get_text("btn_update_info", lang),
+                callback_data=f"{UPDATE_INFO}{dog.id}",
+            )
+        )
+
     keyboard.append(row)
-    
+
     if show_next:
         # Feed mode - add Next button
-        keyboard.append([
-            InlineKeyboardButton(
-                text=get_text("btn_next", lang),
-                callback_data=f"{NEXT_DOG}{dog.id}",
-            ),
-        ])
-    
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text=get_text("btn_next", lang),
+                    callback_data=f"{NEXT_DOG}{dog.id}",
+                ),
+            ]
+        )
+
     return InlineKeyboardMarkup(keyboard)
 
 

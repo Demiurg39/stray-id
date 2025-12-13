@@ -119,3 +119,98 @@ def get_language_keyboard() -> ReplyKeyboardMarkup:
         resize_keyboard=True,
         one_time_keyboard=True,
     )
+
+
+def get_cancel_keyboard(lang: Language = Language.RU) -> ReplyKeyboardMarkup:
+    """Keyboard with just Cancel button."""
+    keyboard = [
+        [
+            KeyboardButton(get_text("btn_no_cancel", lang)),
+        ],
+    ]
+    return ReplyKeyboardMarkup(
+        keyboard,
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+
+def get_feed_keyboard(lang: Language = Language.RU) -> ReplyKeyboardMarkup:
+    """Keyboard for feed navigation and actions."""
+    keyboard = [
+        [
+            KeyboardButton(get_text("btn_seen_here", lang)),
+            KeyboardButton(get_text("btn_add_photo", lang)),
+        ],
+        [
+            KeyboardButton(get_text("btn_2gis", lang)),
+            KeyboardButton(get_text("btn_next", lang)),
+        ],
+        [
+            KeyboardButton(get_text("btn_menu", lang)),
+        ],
+    ]
+    return ReplyKeyboardMarkup(
+        keyboard,
+        resize_keyboard=True,
+        one_time_keyboard=False,
+    )
+
+
+def get_dog_actions_keyboard(lang: Language = Language.RU) -> ReplyKeyboardMarkup:
+    """Keyboard for identify result actions."""
+    keyboard = [
+        [
+            KeyboardButton(get_text("btn_seen_here", lang)),
+            KeyboardButton(get_text("btn_add_photo", lang)),
+        ],
+        [
+            KeyboardButton(get_text("btn_2gis", lang)),
+            KeyboardButton(get_text("btn_menu", lang)),
+        ],
+    ]
+    return ReplyKeyboardMarkup(
+        keyboard,
+        resize_keyboard=True,
+        one_time_keyboard=False,
+    )
+
+
+def get_menu_keyboard(lang: Language = Language.RU) -> ReplyKeyboardMarkup:
+    """Keyboard for menu submenu."""
+    keyboard = [
+        [
+            KeyboardButton(get_text("menu_lost", lang)),
+            KeyboardButton(get_text("menu_profile", lang)),
+        ],
+        [
+            KeyboardButton(get_text("menu_about", lang)),
+            KeyboardButton(get_text("menu_donate", lang)),
+        ],
+        [
+            KeyboardButton(get_text("btn_no_cancel", lang)), # Back/Cancel
+        ],
+    ]
+    return ReplyKeyboardMarkup(
+        keyboard,
+        resize_keyboard=True,
+        one_time_keyboard=False,
+    )
+
+
+
+
+
+def get_not_found_keyboard(lang: Language = Language.RU) -> ReplyKeyboardMarkup:
+    """Keyboard when dog is not found."""
+    keyboard = [
+        [
+            KeyboardButton(get_text("btn_yes_register", lang)),
+            KeyboardButton(get_text("btn_no_cancel", lang)),
+        ],
+    ]
+    return ReplyKeyboardMarkup(
+        keyboard,
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )

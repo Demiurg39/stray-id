@@ -6,17 +6,19 @@ from typing import Optional
 from telegram import Update
 from telegram.ext import (
     MessageHandler,
-    CallbackQueryHandler,
     ContextTypes,
     filters,
 )
+from telegram import InputMediaPhoto
 
 from stray_id.locales import get_text
 from stray_id.models.user import Language
 from stray_id.models.dog import Dog, DogStatus
 from stray_id.storage.memory import storage
-from stray_id.keyboards.dog_card import get_dog_card_keyboard, NEXT_DOG
-from stray_id.utils.geo import get_2gis_link, format_distance
+from stray_id.keyboards.dog_card import get_dog_card_keyboard
+from stray_id.keyboards.main_menu import get_feed_keyboard, get_main_menu
+from stray_id.utils.geo import format_distance
+from stray_id.handlers import menu
 
 
 def _get_user_lang(user_id: int) -> Language:
@@ -109,7 +111,8 @@ async def _send_dog_card(
 ) -> None:
     """Send a dog card message with photo and buttons."""
     text = _format_dog_card(dog, lang)
-    keyboard = get_dog_card_keyboard(dog, lang, show_next=show_next)
+    # In feed mode, we don't show Next button in inline keyboard anymore
+    keyboard = get_dog_card_keyboard(dog, lang, show_next=False)
     
     # Check if this is a lost dog - show alert
     if dog.status == DogStatus.LOST and dog.owner_contact:
@@ -129,12 +132,25 @@ async def _send_dog_card(
             parse_mode="Markdown",
         )
     else:
-        await update.message.reply_photo(
-            photo=dog.photo_file_id,
-            caption=text,
-            reply_markup=keyboard,
-            parse_mode="Markdown",
-        )
+        # Store current dog ID for actions
+        context.user_data["current_dog_id"] = dog.id
+        
+        if len(dog.photo_file_ids) > 1:
+            media_group = [InputMediaPhoto(media=pid) for pid in dog.photo_file_ids]
+            await update.message.reply_media_group(media=media_group)
+            
+            await update.message.reply_text(
+                text=text,
+                reply_markup=get_feed_keyboard(lang),
+                parse_mode="Markdown",
+            )
+        else:
+            await update.message.reply_photo(
+                photo=dog.photo_file_id,
+                caption=text,
+                reply_markup=get_feed_keyboard(lang),
+                parse_mode="Markdown",
+            )
 
 
 async def feed_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -150,19 +166,16 @@ async def feed_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     # Store current index in user_data
     context.user_data["feed_index"] = 0
     
-    await _send_dog_card(update, context, dogs[0], lang, show_next=len(dogs) > 1)
+    await _send_dog_card(update, context, dogs[0], lang, show_next=False)
 
 
 async def feed_next(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle '➡️ Дальше' button — show next dog."""
-    query = update.callback_query
-    await query.answer()
-    
     lang = _get_user_lang(update.effective_user.id)
     dogs = storage.get_all_dogs()
     
     if not dogs:
-        await query.edit_message_caption(caption=get_text("feed_empty", lang))
+        await update.message.reply_text(get_text("feed_empty", lang))
         return
     
     # Get and increment index
@@ -174,6 +187,7 @@ async def feed_next(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=get_text("feed_end", lang),
+            reply_markup=get_main_menu(lang),
         )
         context.user_data["feed_index"] = 0
         return
@@ -181,7 +195,32 @@ async def feed_next(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     context.user_data["feed_index"] = next_index
     dog = dogs[next_index]
     
-    await _send_dog_card(update, context, dog, lang, show_next=next_index < len(dogs) - 1)
+    await _send_dog_card(update, context, dog, lang, show_next=False)
+
+
+async def feed_exit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle '☰ Меню' button in feed — exit to main menu."""
+    context.user_data.pop("feed_index", None)
+    await menu.show_menu(update, context)
+
+
+async def feed_2gis(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle '🌍 2GIS' button."""
+    lang = _get_user_lang(update.effective_user.id)
+    dog_id = context.user_data.get("current_dog_id")
+    
+    if not dog_id:
+        return
+        
+    dog = storage.get_dog(dog_id)
+    if not dog:
+        return
+        
+    link = get_2gis_link(dog.location.latitude, dog.location.longitude)
+    await update.message.reply_text(
+        f"{get_text('btn_2gis', lang)}: {link}",
+        disable_web_page_preview=True,
+    )
 
 
 def _feed_filter():
@@ -191,4 +230,6 @@ def _feed_filter():
 
 # Handlers
 handler = MessageHandler(_feed_filter(), feed_start)
-next_handler = CallbackQueryHandler(feed_next, pattern=f"^{NEXT_DOG}")
+next_handler = MessageHandler(filters.Regex(r"^➡️"), feed_next)
+exit_handler = MessageHandler(filters.Regex(r"^☰"), feed_exit)
+gis_handler = MessageHandler(filters.Regex(r"^🌍"), feed_2gis)

@@ -9,6 +9,7 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
+from telegram import InputMediaPhoto
 
 from stray_id.handlers import menu
 
@@ -17,23 +18,23 @@ from stray_id.models.user import Language
 from stray_id.models.dog import Dog, DogStatus, DogFeature, Location
 from stray_id.storage.memory import storage
 from stray_id.search.mock import search_service
-from stray_id.keyboards.main_menu import get_main_menu, get_location_keyboard
-from stray_id.keyboards.dog_card import (
-    get_dog_card_keyboard, 
+from stray_id.states import ConversationState
+from stray_id.keyboards.main_menu import (
+    get_main_menu, 
+    get_location_keyboard, 
+    get_cancel_keyboard,
     get_not_found_keyboard,
-    get_lost_alert_keyboard,
-    SEEN_HERE,
-    ADD_PHOTO,
+    get_dog_actions_keyboard,
 )
-from stray_id.keyboards.features import get_features_keyboard, FEATURE_PREFIX, FEATURES_DONE
+from stray_id.keyboards.features import (
+    get_features_keyboard,
+    FEATURE_PREFIX,
+    FEATURES_DONE,
+)
+from stray_id.keyboards.dog_card import get_lost_alert_keyboard
 
 
-# Conversation states
-WAITING_PHOTO = 0
-WAITING_LOCATION = 1
-WAITING_NEW_PHOTO = 2
-WAITING_FEATURES = 3
-WAITING_DECISION = 4
+
 
 
 def _get_user_lang(user_id: int) -> Language:
@@ -102,8 +103,11 @@ def _format_dog_card(dog: Dog, lang: Language) -> str:
 async def identify_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle '📸 Кто это?' button — ask for photo."""
     lang = _get_user_lang(update.effective_user.id)
-    await update.message.reply_text(get_text("send_photo", lang))
-    return WAITING_PHOTO
+    await update.message.reply_text(
+        get_text("send_photo", lang),
+        reply_markup=get_cancel_keyboard(lang),
+    )
+    return ConversationState.WAITING_PHOTO
 
 
 async def identify_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -128,16 +132,29 @@ async def identify_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             # Show alert for lost dogs
             if dog.status == DogStatus.LOST and dog.owner_contact:
                 text = get_text("lost_alert", lang).format(contact=dog.owner_contact) + "\n\n" + text
-                keyboard = get_lost_alert_keyboard(dog, lang)
+                keyboard = get_lost_alert_keyboard(dog, lang) # Keep inline for alert? Or change? User said "replace all". 
+                # But alert usually has "Call owner" which is a URL button (inline only). 
+                # Let's keep inline for Lost Alert for now as it might have URL buttons.
+                # Actually, let's use get_dog_actions_keyboard for normal found dogs.
             else:
-                keyboard = get_dog_card_keyboard(dog, lang, show_next=False)
+                keyboard = get_dog_actions_keyboard(lang)
             
-            await update.message.reply_photo(
-                photo=dog.photo_file_id,
-                caption=text,
-                reply_markup=keyboard,
-                parse_mode="Markdown",
-            )
+            if len(dog.photo_file_ids) > 1:
+                media_group = [InputMediaPhoto(media=pid) for pid in dog.photo_file_ids]
+                await update.message.reply_media_group(media=media_group)
+                
+                await update.message.reply_text(
+                    text=text,
+                    reply_markup=keyboard,
+                    parse_mode="Markdown",
+                )
+            else:
+                await update.message.reply_photo(
+                    photo=dog.photo_file_id,
+                    caption=text,
+                    reply_markup=keyboard,
+                    parse_mode="Markdown",
+                )
             context.user_data["found_dog_id"] = dog.id
             return ConversationHandler.END
     
@@ -147,34 +164,30 @@ async def identify_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         get_text("dog_not_found", lang),
         reply_markup=get_not_found_keyboard(lang),
     )
-    return WAITING_DECISION
+    return ConversationState.WAITING_DECISION
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle cancel button."""
-    query = update.callback_query
-    await query.answer()
-    
     lang = _get_user_lang(update.effective_user.id)
-    await query.edit_message_text(get_text("cancelled", lang))
+    await update.message.reply_text(
+        get_text("cancelled", lang),
+        reply_markup=get_main_menu(lang),
+    )
     context.user_data.clear()
     return ConversationHandler.END
 
 
 async def start_registration(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handle '➕ Зарегистрировать' from search results."""
-    query = update.callback_query
-    await query.answer()
-    
+    """Handle '➕ Зарегистрировать'."""
     lang = _get_user_lang(update.effective_user.id)
     
-    await query.edit_message_text(get_text("ask_location", lang))
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
+    await update.message.reply_text(get_text("registration_started", lang))
+    await update.message.reply_text(
         text=get_text("ask_location", lang),
         reply_markup=get_location_keyboard(lang),
     )
-    return WAITING_LOCATION
+    return ConversationState.WAITING_LOCATION
 
 
 async def register_location(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -192,36 +205,49 @@ async def register_location(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         get_text("ask_features", lang),
         reply_markup=get_features_keyboard(set(), lang),
     )
-    return WAITING_FEATURES
+    return ConversationState.WAITING_FEATURES
 
 
 async def toggle_feature(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handle feature toggle button."""
+    """Handle feature toggle button (callback)."""
     query = update.callback_query
     await query.answer()
     
     lang = _get_user_lang(update.effective_user.id)
-    feature_value = query.data.replace(FEATURE_PREFIX, "")
-    feature = DogFeature(feature_value)
+    data = query.data
     
-    selected: set = context.user_data.get("features", set())
-    if feature in selected:
-        selected.discard(feature)
-    else:
-        selected.add(feature)
-    context.user_data["features"] = selected
+    # Extract feature value from callback data
+    feature_value = data.replace(FEATURE_PREFIX, "")
+    
+    # Find which feature was clicked
+    clicked_feature = None
+    for f in DogFeature:
+        if f.value == feature_value:
+            clicked_feature = f
+            break
+            
+    if clicked_feature:
+        selected: set = context.user_data.get("features", set())
+        if clicked_feature in selected:
+            selected.discard(clicked_feature)
+        else:
+            selected.add(clicked_feature)
+        context.user_data["features"] = selected
     
     await query.edit_message_reply_markup(
-        reply_markup=get_features_keyboard(selected, lang),
+        reply_markup=get_features_keyboard(context.user_data.get("features", set()), lang),
     )
-    return WAITING_FEATURES
+    return ConversationState.WAITING_FEATURES
 
 
 async def finish_registration(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle ✅ Готово — save dog to database."""
     query = update.callback_query
-    await query.answer()
-    
+    if query:
+        await query.answer()
+        # Delete the inline keyboard message to clean up
+        await query.delete_message()
+        
     lang = _get_user_lang(update.effective_user.id)
     
     features: set[DogFeature] = context.user_data.get("features", set())
@@ -229,7 +255,7 @@ async def finish_registration(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     dog = Dog(
         id=0,
-        photo_file_id=context.user_data["pending_photo_id"],
+        photo_file_ids=[context.user_data["pending_photo_id"]],
         location=context.user_data["location"],
         status=status,
         features=list(features),
@@ -238,11 +264,10 @@ async def finish_registration(update: Update, context: ContextTypes.DEFAULT_TYPE
     dog = storage.add_dog(dog)
     context.user_data.clear()
     
-    await query.edit_message_text(
+    await update.message.reply_text(
         get_text("dog_registered", lang).format(id=dog.id),
     )
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
+    await update.message.reply_text(
         text=get_text("welcome", lang),
         reply_markup=get_main_menu(lang),
         parse_mode="Markdown",
@@ -252,19 +277,23 @@ async def finish_registration(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def seen_here(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle '📍 Видел здесь' — request location to update."""
-    query = update.callback_query
-    await query.answer()
+    lang = _get_user_lang(update.effective_user.id)
     
-    dog_id = int(query.data.split(":")[1])
+    # Try to get dog ID from feed or identify result
+    dog_id = context.user_data.get("current_dog_id") or context.user_data.get("found_dog_id")
+    
+    if not dog_id:
+        # Should not happen if flow is correct, but safety check
+        await update.message.reply_text(get_text("error_no_location", lang)) # Or generic error
+        return ConversationHandler.END
+        
     context.user_data["update_dog_id"] = dog_id
     
-    lang = _get_user_lang(update.effective_user.id)
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
+    await update.message.reply_text(
         text=get_text("ask_location", lang),
         reply_markup=get_location_keyboard(lang),
     )
-    return WAITING_LOCATION
+    return ConversationState.WAITING_LOCATION
 
 
 async def update_dog_location(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -296,18 +325,21 @@ async def update_dog_location(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def add_photo_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle '📷 Добавить фото' button."""
-    query = update.callback_query
-    await query.answer()
+    lang = _get_user_lang(update.effective_user.id)
     
-    dog_id = int(query.data.split(":")[1])
+    dog_id = context.user_data.get("current_dog_id") or context.user_data.get("found_dog_id")
+    
+    if not dog_id:
+        await update.message.reply_text(get_text("error_no_photo", lang))
+        return ConversationHandler.END
+        
     context.user_data["add_photo_dog_id"] = dog_id
     
-    lang = _get_user_lang(update.effective_user.id)
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
+    await update.message.reply_text(
         text=get_text("ask_new_photo", lang),
+        reply_markup=get_cancel_keyboard(lang),
     )
-    return WAITING_NEW_PHOTO
+    return ConversationState.WAITING_NEW_PHOTO
 
 
 async def add_photo_receive(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -319,7 +351,9 @@ async def add_photo_receive(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         dog = storage.get_dog(dog_id)
         if dog:
             photo = update.message.photo[-1]
-            dog.photo_file_id = photo.file_id
+            if not dog.photo_file_ids:
+                dog.photo_file_ids = []
+            dog.photo_file_ids.append(photo.file_id)
             dog.last_seen_at = datetime.now()
             storage.update_dog(dog)
         
@@ -335,6 +369,20 @@ async def add_photo_receive(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 def _identify_filter():
     return filters.Regex(r"^📸")
 
+def _seen_here_filter():
+    return filters.Regex(r"^📍")
+
+def _add_photo_filter():
+    return filters.Regex(r"^📷")
+
+def _register_filter():
+    return filters.Regex(r"^➕")
+
+def _cancel_filter():
+    return filters.Regex(r"^❌")
+
+
+
 
 async def menu_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle menu button during conversation."""
@@ -346,31 +394,33 @@ async def menu_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 conversation_handler = ConversationHandler(
     entry_points=[
         MessageHandler(_identify_filter(), identify_start),
+        MessageHandler(_seen_here_filter(), seen_here),
+        MessageHandler(_add_photo_filter(), add_photo_start),
     ],
     states={
-        WAITING_PHOTO: [
+        ConversationState.WAITING_PHOTO: [
             MessageHandler(filters.PHOTO, identify_photo),
         ],
-        WAITING_LOCATION: [
+        ConversationState.WAITING_LOCATION: [
             MessageHandler(filters.LOCATION, update_dog_location),
         ],
-        WAITING_NEW_PHOTO: [
+        ConversationState.WAITING_NEW_PHOTO: [
             MessageHandler(filters.PHOTO, add_photo_receive),
         ],
-        WAITING_FEATURES: [
-            CallbackQueryHandler(toggle_feature, pattern=f"^{FEATURE_PREFIX}"),
+        ConversationState.WAITING_FEATURES: [
             CallbackQueryHandler(finish_registration, pattern=f"^{FEATURES_DONE}$"),
+            CallbackQueryHandler(toggle_feature, pattern=f"^{FEATURE_PREFIX}"),
         ],
-        WAITING_DECISION: [
-            CallbackQueryHandler(cancel, pattern="^cancel$"),
-            CallbackQueryHandler(start_registration, pattern="^register_from_search$"),
+        ConversationState.WAITING_DECISION: [
+            MessageHandler(_cancel_filter(), cancel),
+            MessageHandler(_register_filter(), start_registration),
         ],
     },
     fallbacks=[
-        CallbackQueryHandler(cancel, pattern="^cancel$"),
-        CallbackQueryHandler(start_registration, pattern="^register_from_search$"),
-        CallbackQueryHandler(seen_here, pattern=f"^{SEEN_HERE}"),
-        CallbackQueryHandler(add_photo_start, pattern=f"^{ADD_PHOTO}"),
+        MessageHandler(_cancel_filter(), cancel),
+        MessageHandler(_register_filter(), start_registration),
+        MessageHandler(_seen_here_filter(), seen_here),
+        MessageHandler(_add_photo_filter(), add_photo_start),
         MessageHandler(filters.Regex(r"^☰"), menu_fallback),
     ],
 )

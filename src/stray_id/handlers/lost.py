@@ -20,12 +20,10 @@ from stray_id.search.mock import search_service
 from stray_id.keyboards.main_menu import get_main_menu, get_location_keyboard, get_contact_keyboard
 from stray_id.keyboards.dog_card import get_lost_alert_keyboard
 from stray_id.utils.geo import get_2gis_link
+from stray_id.states import ConversationState
 
 
-# Conversation states
-WAITING_PHOTO = 0
-WAITING_LOCATION = 1
-WAITING_CONTACT = 2
+
 
 
 def _get_user_lang(user_id: int) -> Language:
@@ -35,12 +33,12 @@ def _get_user_lang(user_id: int) -> Language:
 
 async def lost_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle '🆘 Я потерял собаку' from menu."""
-    query = update.callback_query
-    await query.answer()
-    
     lang = _get_user_lang(update.effective_user.id)
-    await query.edit_message_text(get_text("lost_ask_photo", lang))
-    return WAITING_PHOTO
+    await update.message.reply_text(
+        get_text("lost_ask_photo", lang),
+        reply_markup=get_cancel_keyboard(lang),
+    )
+    return ConversationState.WAITING_PHOTO
 
 
 async def lost_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -54,7 +52,7 @@ async def lost_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         get_text("ask_location", lang),
         reply_markup=get_location_keyboard(lang),
     )
-    return WAITING_LOCATION
+    return ConversationState.WAITING_LOCATION
 
 
 async def lost_location(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -71,7 +69,7 @@ async def lost_location(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         get_text("ask_owner_contact", lang),
         reply_markup=get_contact_keyboard(lang),
     )
-    return WAITING_CONTACT
+    return ConversationState.WAITING_CONTACT
 
 
 async def lost_contact_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -164,23 +162,30 @@ async def menu_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     context.user_data.clear()
     await menu.show_menu(update, context)
     return ConversationHandler.END
+def _lost_filter():
+    return filters.Regex(r"^🆘")
+
+def _cancel_filter():
+    return filters.Regex(r"^❌")
+
 conversation_handler = ConversationHandler(
     entry_points=[
-        CallbackQueryHandler(lost_start, pattern="^menu:lost$"),
+        MessageHandler(_lost_filter(), lost_start),
     ],
     states={
-        WAITING_PHOTO: [
+        ConversationState.WAITING_PHOTO: [
             MessageHandler(filters.PHOTO, lost_photo),
         ],
-        WAITING_LOCATION: [
+        ConversationState.WAITING_LOCATION: [
             MessageHandler(filters.LOCATION, lost_location),
         ],
-        WAITING_CONTACT: [
+        ConversationState.WAITING_CONTACT: [
             MessageHandler(filters.CONTACT, lost_contact_button),
             MessageHandler(filters.TEXT & ~filters.COMMAND, lost_contact_text),
         ],
     },
     fallbacks=[
-        MessageHandler(filters.Regex(r"^🍔"), menu_fallback),
+        MessageHandler(filters.Regex(r"^☰"), menu_fallback),
+        MessageHandler(_cancel_filter(), menu_fallback), # Cancel goes back to menu
     ],
 )
