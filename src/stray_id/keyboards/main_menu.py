@@ -147,7 +147,7 @@ def get_feed_keyboard(lang: Language = Language.RU) -> ReplyKeyboardMarkup:
             KeyboardButton(get_text("btn_next", lang)),
         ],
         [
-            KeyboardButton(get_text("btn_menu", lang)),
+            KeyboardButton(get_text("btn_exit_feed", lang)),
         ],
     ]
     return ReplyKeyboardMarkup(

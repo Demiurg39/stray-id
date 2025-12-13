@@ -248,5 +248,5 @@ def _feed_filter():
 # Handlers
 handler = MessageHandler(_feed_filter(), feed_start)
 next_handler = MessageHandler(filters.Regex(r"^➡️"), feed_next)
-exit_handler = MessageHandler(filters.Regex(r"^☰"), feed_exit)
+exit_handler = MessageHandler(filters.Regex(r"^❌"), feed_exit)
 gis_handler = MessageHandler(filters.Regex(r"^🌍"), feed_2gis)
