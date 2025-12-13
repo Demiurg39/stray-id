@@ -15,8 +15,7 @@ from stray_id.storage.memory import storage
 from stray_id.keyboards.main_menu import get_main_menu, get_language_keyboard
 
 
-# Conversation states
-CHOOSING_LANGUAGE = 0
+from stray_id.states import ConversationState
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -25,7 +24,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         get_text("choose_language"),
         reply_markup=get_language_keyboard(),
     )
-    return CHOOSING_LANGUAGE
+    return ConversationState.CHOOSING_LANGUAGE
 
 
 async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -59,7 +58,7 @@ async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 handler = ConversationHandler(
     entry_points=[CommandHandler("start", start)],
     states={
-        CHOOSING_LANGUAGE: [
+        ConversationState.CHOOSING_LANGUAGE: [
             MessageHandler(
                 filters.TEXT & ~filters.COMMAND,
                 set_language,

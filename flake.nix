@@ -50,6 +50,11 @@
       system: let
         pkgs = nixpkgs.legacyPackages.${system};
         python = pkgs.python314;
+        aiohttp = final: prev: {
+          aiohttp = prev.aiohttp.overrideAttrs (old: {
+            nativeBuildInputs = (old.nativeBuildInputs or []) ++ [final.setuptools];
+          });
+        };
       in
         (pkgs.callPackage pyproject-nix.build.packages {
           inherit python;
@@ -57,6 +62,7 @@
           lib.composeManyExtensions [
             pyproject-build-systems.overlays.wheel
             overlay
+            aiohttp
           ]
         )
     );
@@ -91,7 +97,7 @@
         };
 
         packages = forAllSystems (system: {
-          default = pythonSets.${system}.mkVirtualEnv "stray-id-venv" workspace.deps.default;
+          default = pythonSets.${system}.mkVirtualEnv "stray-id" workspace.deps.default;
         });
       }
     );
