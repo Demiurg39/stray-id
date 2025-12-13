@@ -161,7 +161,7 @@ async def identify_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 )
             else:
                 await update.message.reply_photo(
-                    photo=dog.photo_file_id,
+                    photo=dog.photo_file_ids[0],
                     caption=text,
                     reply_markup=keyboard,
                     parse_mode="Markdown",
@@ -193,7 +193,6 @@ async def start_registration(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Handle '➕ Зарегистрировать'."""
     lang = _get_user_lang(update.effective_user.id)
 
-    await update.message.reply_text(get_text("registration_started", lang))
     await update.message.reply_text(
         text=get_text("ask_location", lang),
         reply_markup=get_location_keyboard(lang),
