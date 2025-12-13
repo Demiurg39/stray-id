@@ -3,23 +3,27 @@
 from datetime import datetime
 from typing import Optional
 
-from telegram import Update
+from telegram import InputMediaPhoto, Update
 from telegram.ext import (
-    MessageHandler,
     ContextTypes,
+    ConversationHandler,
+    MessageHandler,
     filters,
 )
-from telegram import InputMediaPhoto
 
-from stray_id.locales import get_text
-from stray_id.models.user import Language
-from stray_id.models.dog import Dog, DogStatus
-from stray_id.storage.memory import storage
-from stray_id.keyboards.dog_card import get_dog_card_keyboard
-from stray_id.keyboards.main_menu import get_feed_keyboard, get_main_menu
-from stray_id.utils.geo import format_distance
 from stray_id.handlers import menu
-from stray_id.utils.geo import get_2gis_link
+from stray_id.keyboards.dog_card import get_dog_card_keyboard
+from stray_id.keyboards.main_menu import (
+    get_cancel_keyboard,
+    get_feed_keyboard,
+    get_main_menu,
+)
+from stray_id.locales import get_text
+from stray_id.models.dog import Dog, DogStatus
+from stray_id.models.user import Language
+from stray_id.states import ConversationState
+from stray_id.storage.memory import storage
+from stray_id.utils.geo import format_distance, get_2gis_link
 
 
 def _get_user_lang(user_id: int) -> Language:
@@ -124,8 +128,9 @@ async def _send_dog_card(
 ) -> None:
     """Send a dog card message with photo and buttons."""
     text = _format_dog_card(dog, lang)
-    # In feed mode, we don't show Next button in inline keyboard anymore
-    keyboard = get_dog_card_keyboard(dog, lang, show_next=False)
+    # Show "Add Name" only if dog has no name
+    show_add_name = dog.name is None
+    keyboard = get_feed_keyboard(lang, show_add_name=show_add_name)
 
     # Check if this is a lost dog - show alert
     if dog.status == DogStatus.LOST and dog.owner_contact:
@@ -158,14 +163,14 @@ async def _send_dog_card(
 
             await update.message.reply_text(
                 text=text,
-                reply_markup=get_feed_keyboard(lang),
+                reply_markup=keyboard,
                 parse_mode="Markdown",
             )
         else:
             await update.message.reply_photo(
                 photo=dog.photo_file_ids[0],
                 caption=text,
-                reply_markup=get_feed_keyboard(lang),
+                reply_markup=keyboard,
                 parse_mode="Markdown",
             )
 
@@ -240,6 +245,61 @@ async def feed_2gis(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
+async def feed_add_name_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle '✏️ Добавить кличку' button."""
+    lang = _get_user_lang(update.effective_user.id)
+    dog_id = context.user_data.get("current_dog_id")
+    
+    if not dog_id:
+        return ConversationHandler.END
+        
+    context.user_data["add_name_dog_id"] = dog_id
+    
+    await update.message.reply_text(
+        get_text("ask_name_input", lang),
+        reply_markup=get_cancel_keyboard(lang),
+    )
+    return ConversationState.WAITING_ADD_NAME
+
+
+async def feed_add_name_receive(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle name input for existing dog."""
+    lang = _get_user_lang(update.effective_user.id)
+    name = update.message.text
+    dog_id = context.user_data.get("add_name_dog_id")
+    
+    if dog_id:
+        dog = storage.get_dog(dog_id)
+        if dog:
+            dog.name = name
+            storage.update_dog(dog)
+            
+            await update.message.reply_text(
+                get_text("name_added", lang),
+            )
+            # Resend the dog card with updated info
+            await _send_dog_card(update, context, dog, lang, show_next=False)
+            
+    context.user_data.pop("add_name_dog_id", None)
+    return ConversationHandler.END
+
+
+async def feed_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Cancel adding name."""
+    lang = _get_user_lang(update.effective_user.id)
+    await update.message.reply_text(
+        get_text("cancelled", lang),
+    )
+    # Resend current dog card
+    dog_id = context.user_data.get("current_dog_id")
+    if dog_id:
+        dog = storage.get_dog(dog_id)
+        if dog:
+             await _send_dog_card(update, context, dog, lang, show_next=False)
+             
+    return ConversationHandler.END
+
+
 def _feed_filter():
     """Filter for feed button text in any language."""
     return filters.Regex(r"^🐶")
@@ -250,3 +310,16 @@ handler = MessageHandler(_feed_filter(), feed_start)
 next_handler = MessageHandler(filters.Regex(r"^➡️"), feed_next)
 exit_handler = MessageHandler(filters.Regex(r"^❌"), feed_exit)
 gis_handler = MessageHandler(filters.Regex(r"^🌍"), feed_2gis)
+
+# Add Name Conversation
+add_name_handler = ConversationHandler(
+    entry_points=[MessageHandler(filters.Regex(r"^✏️"), feed_add_name_start)],
+    states={
+        ConversationState.WAITING_ADD_NAME: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, feed_add_name_receive),
+        ],
+    },
+    fallbacks=[
+        MessageHandler(filters.Regex(r"^❌"), feed_cancel),
+    ],
+)

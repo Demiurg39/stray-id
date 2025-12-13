@@ -25,6 +25,7 @@ from stray_id.keyboards.main_menu import (
     get_location_keyboard,
     get_main_menu,
     get_not_found_keyboard,
+    get_yes_no_keyboard,
 )
 from stray_id.locales import get_text
 from stray_id.models.dog import Dog, DogFeature, DogStatus, Location
@@ -211,7 +212,52 @@ async def register_location(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         longitude=location.longitude,
     )
     context.user_data["features"] = set()
+    # Initialize name as None
+    context.user_data["name"] = None
 
+    await update.message.reply_text(
+        get_text("ask_name_decision", lang),
+        reply_markup=get_yes_no_keyboard(lang),
+    )
+    return ConversationState.WAITING_NAME_DECISION
+
+
+async def register_name_decision(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Handle name decision (Yes/No)."""
+    lang = _get_user_lang(update.effective_user.id)
+    text = update.message.text
+    
+    if text == get_text("btn_yes_name", lang):
+        await update.message.reply_text(
+            get_text("ask_name_input", lang),
+            reply_markup=get_cancel_keyboard(lang), # Allow cancel to skip name? Or back? Let's use cancel to skip? No, cancel exits flow.
+            # Maybe just no keyboard or a "Skip" button? 
+            # User said: "if yes, bot asks for name".
+            # Let's use simple text input.
+        )
+        return ConversationState.WAITING_NAME_INPUT
+    
+    # If No (or anything else), proceed to features
+    return await _ask_features(update, context, lang)
+
+
+async def register_name_input(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Handle name input."""
+    lang = _get_user_lang(update.effective_user.id)
+    name = update.message.text
+    context.user_data["name"] = name
+    
+    return await _ask_features(update, context, lang)
+
+
+async def _ask_features(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, lang: Language
+) -> int:
+    """Ask for features (shared step)."""
     await update.message.reply_text(
         get_text("ask_features", lang),
         reply_markup=get_features_keyboard(set(), lang),
@@ -273,6 +319,7 @@ async def finish_registration(
         location=context.user_data["location"],
         status=status,
         features=list(features),
+        name=context.user_data.get("name"),
     )
 
     dog = storage.add_dog(dog)
@@ -427,6 +474,12 @@ conversation_handler = ConversationHandler(
         ],
         ConversationState.WAITING_LOCATION: [
             MessageHandler(filters.LOCATION, update_dog_location),
+        ],
+        ConversationState.WAITING_NAME_DECISION: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, register_name_decision),
+        ],
+        ConversationState.WAITING_NAME_INPUT: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, register_name_input),
         ],
         ConversationState.WAITING_NEW_PHOTO: [
             MessageHandler(filters.PHOTO, add_photo_receive),

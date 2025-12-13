@@ -18,6 +18,7 @@ from stray_id.keyboards.main_menu import (
     get_location_keyboard,
     get_main_menu,
     get_cancel_keyboard,
+    get_yes_no_keyboard,
 )
 from stray_id.locales import get_text
 from stray_id.models.dog import Dog, DogStatus, Location
@@ -67,6 +68,49 @@ async def lost_location(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         longitude=location.longitude,
     )
 
+    # Initialize name as None
+    context.user_data["name"] = None
+
+    await update.message.reply_text(
+        get_text("ask_name_decision", lang),
+        reply_markup=get_yes_no_keyboard(lang),
+    )
+    return ConversationState.WAITING_NAME_DECISION
+
+
+async def lost_name_decision(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Handle name decision (Yes/No)."""
+    lang = _get_user_lang(update.effective_user.id)
+    text = update.message.text
+    
+    if text == get_text("btn_yes_name", lang):
+        await update.message.reply_text(
+            get_text("ask_name_input", lang),
+            reply_markup=get_cancel_keyboard(lang),
+        )
+        return ConversationState.WAITING_NAME_INPUT
+    
+    # If No (or anything else), proceed to contact
+    return await _ask_contact(update, context, lang)
+
+
+async def lost_name_input(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    """Handle name input."""
+    lang = _get_user_lang(update.effective_user.id)
+    name = update.message.text
+    context.user_data["name"] = name
+    
+    return await _ask_contact(update, context, lang)
+
+
+async def _ask_contact(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, lang: Language
+) -> int:
+    """Ask for contact (shared step)."""
     await update.message.reply_text(
         get_text("ask_owner_contact", lang),
         reply_markup=get_contact_keyboard(lang),
@@ -129,6 +173,9 @@ async def _finish_lost_registration(
             dog.owner_contact = phone
             dog.location = location
             dog.last_seen_at = datetime.now()
+            # Update name if provided
+            if context.user_data.get("name"):
+                dog.name = context.user_data.get("name")
             storage.update_dog(dog)
 
             # Notify user
@@ -158,6 +205,7 @@ async def _finish_lost_registration(
         location=location,
         status=DogStatus.LOST,
         owner_contact=phone,
+        name=context.user_data.get("name"),
     )
 
     dog = storage.add_dog(dog)
@@ -198,6 +246,12 @@ conversation_handler = ConversationHandler(
         ConversationState.WAITING_CONTACT: [
             MessageHandler(filters.CONTACT, lost_contact_button),
             MessageHandler(filters.TEXT & ~filters.COMMAND, lost_contact_text),
+        ],
+        ConversationState.WAITING_NAME_DECISION: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, lost_name_decision),
+        ],
+        ConversationState.WAITING_NAME_INPUT: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, lost_name_input),
         ],
     },
     fallbacks=[

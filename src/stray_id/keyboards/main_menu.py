@@ -141,7 +141,24 @@ def get_cancel_keyboard(lang: Language = Language.RU) -> ReplyKeyboardMarkup:
     )
 
 
-def get_feed_keyboard(lang: Language = Language.RU) -> ReplyKeyboardMarkup:
+def get_yes_no_keyboard(lang: Language = Language.RU) -> ReplyKeyboardMarkup:
+    """Yes/No keyboard for name decision."""
+    keyboard = [
+        [
+            KeyboardButton(get_text("btn_yes_name", lang)),
+            KeyboardButton(get_text("btn_no_name", lang)),
+        ],
+    ]
+    return ReplyKeyboardMarkup(
+        keyboard,
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+
+def get_feed_keyboard(
+    lang: Language = Language.RU, show_add_name: bool = False
+) -> ReplyKeyboardMarkup:
     """Keyboard for feed navigation and actions."""
     keyboard = [
         [
@@ -152,10 +169,13 @@ def get_feed_keyboard(lang: Language = Language.RU) -> ReplyKeyboardMarkup:
             KeyboardButton(get_text("btn_2gis", lang)),
             KeyboardButton(get_text("btn_next", lang)),
         ],
-        [
-            KeyboardButton(get_text("btn_exit_feed", lang)),
-        ],
     ]
+    
+    if show_add_name:
+        keyboard.append([KeyboardButton(get_text("btn_add_name", lang))])
+        
+    keyboard.append([KeyboardButton(get_text("btn_exit_feed", lang))])
+    
     return ReplyKeyboardMarkup(
         keyboard,
         resize_keyboard=True,
